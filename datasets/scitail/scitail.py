@@ -1,298 +1,159 @@
-"""TODO(sciTail): Add a description here."""
+# coding=utf-8
+# Copyright 2022 The HuggingFace Datasets Authors and the current dataset script contributor.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
+"""
+The SciTail dataset is an entailment dataset created from multiple-choice science exams and
+web sentences. Each question and the correct answer choice are converted into an assertive
+statement to form the hypothesis. We use information retrieval to obtain relevant text from
+a large text corpus of web sentences, and use these sentences as a premise P. We crowdsource
+the annotation of such premise-hypothesis pair as supports (entails) or not (neutral), in order
+to create the SciTail dataset. The dataset contains 27,026 examples with 10,101 examples with
+entails label and 16,925 examples with neutral label.
+"""
 
-import csv
-import json
 import os
-import textwrap
+
+import pandas as pd
 
 import datasets
+from bigbio.utils import schemas
+from bigbio.utils.configs import BigBioConfig
+from bigbio.utils.constants import Lang, Tasks
 
-
-# TODO(sciTail): BibTeX citation
+_LANGUAGES = [Lang.EN]
+_LOCAL = False
 _CITATION = """\
-inproceedings{scitail,
-     Author = {Tushar Khot and Ashish Sabharwal and Peter Clark},
-     Booktitle = {AAAI},
-     Title = {{SciTail}: A Textual Entailment Dataset from Science Question Answering},
-     Year = {2018}
+@inproceedings{scitail,
+    author = {Tushar Khot and Ashish Sabharwal and Peter Clark},
+    booktitle = {AAAI}
+    title = {SciTail: A Textual Entailment Dataset from Science Question Answering},
+    year = {2018}
 }
 """
 
-# TODO(sciTail):
+_DATASETNAME = "scitail"
+
 _DESCRIPTION = """\
-The SciTail dataset is an entailment dataset created from multiple-choice science exams and web sentences. Each question
-and the correct answer choice are converted into an assertive statement to form the hypothesis. We use information
-retrieval to obtain relevant text from a large text corpus of web sentences, and use these sentences as a premise P. We
-crowdsource the annotation of such premise-hypothesis pair as supports (entails) or not (neutral), in order to create
-the SciTail dataset. The dataset contains 27,026 examples with 10,101 examples with entails label and 16,925 examples
-with neutral label
+The SciTail dataset is an entailment dataset created from multiple-choice science exams and
+web sentences. Each question and the correct answer choice are converted into an assertive
+statement to form the hypothesis. We use information retrieval to obtain relevant text from
+a large text corpus of web sentences, and use these sentences as a premise P. We crowdsource
+the annotation of such premise-hypothesis pair as supports (entails) or not (neutral), in order
+to create the SciTail dataset. The dataset contains 27,026 examples with 10,101 examples with
+entails label and 16,925 examples with neutral label.
 """
 
-_URL = "http://data.allenai.org.s3.amazonaws.com/downloads/SciTailV1.1.zip"
+_HOMEPAGE = "https://allenai.org/data/scitail"
+
+_LICENSE = "Apache License 2.0"
+
+_URLS = {
+    _DATASETNAME: "https://ai2-public-datasets.s3.amazonaws.com/scitail/SciTailV1.1.zip",
+}
+
+_SUPPORTED_TASKS = [Tasks.TEXTUAL_ENTAILMENT]
+
+_SOURCE_VERSION = "1.1.0"
+
+_BIGBIO_VERSION = "1.0.0"
 
 
-class ScitailConfig(datasets.BuilderConfig):
+class SciTailDataset(datasets.GeneratorBasedBuilder):
+    """TODO: Short description of my dataset."""
 
-    """BuilderConfig for Xquad"""
+    SOURCE_VERSION = datasets.Version(_SOURCE_VERSION)
+    BIGBIO_VERSION = datasets.Version(_BIGBIO_VERSION)
 
-    def __init__(self, **kwargs):
-        """
-
-        Args:
-            **kwargs: keyword arguments forwarded to super.
-        """
-        super(ScitailConfig, self).__init__(version=datasets.Version("1.1.0", ""), **kwargs)
-
-
-class Scitail(datasets.GeneratorBasedBuilder):
-    """TODO(sciTail): Short description of my dataset."""
-
-    # TODO(sciTail): Set up version.
-    VERSION = datasets.Version("1.1.0")
     BUILDER_CONFIGS = [
-        ScitailConfig(
-            name="snli_format",
-            description="JSONL format used by SNLI with a JSON object corresponding to each entailment example in each line.",
+        BigBioConfig(
+            name="scitail_source",
+            version=SOURCE_VERSION,
+            description="SciTail source schema",
+            schema="source",
+            subset_id="scitail",
         ),
-        ScitailConfig(
-            name="tsv_format", description="Tab-separated format with three columns: premise hypothesis label"
-        ),
-        ScitailConfig(
-            name="dgem_format",
-            description="Tab-separated format used by the DGEM model: premise hypothesis label hypothesis graph structure",
-        ),
-        ScitailConfig(
-            name="predictor_format",
-            description=textwrap.dedent(
-                """\
-          AllenNLP predictors work only with JSONL format. This folder contains the SciTail train/dev/test in JSONL format
-        so that it can be loaded into the predictors. Each line is a JSON object with the following keys:
-        gold_label : the example label from {entails, neutral}
-        sentence1: the premise
-        sentence2: the hypothesis
-        sentence2_structure: structure from the hypothesis """
-            ),
+        BigBioConfig(
+            name="scitail_bigbio_te",
+            version=BIGBIO_VERSION,
+            description="SciTail BigBio schema",
+            schema="bigbio_te",
+            subset_id="scitail",
         ),
     ]
 
+    DEFAULT_CONFIG_NAME = "scitail_source"
+
     def _info(self):
-        # TODO(sciTail): Specifies the datasets.DatasetInfo object
-        if self.config.name == "snli_format":
-            return datasets.DatasetInfo(
-                # This is the description that will appear on the datasets page.
-                description=_DESCRIPTION,
-                # datasets.features.FeatureConnectors
-                features=datasets.Features(
-                    {
-                        "sentence1_binary_parse": datasets.Value("string"),
-                        "sentence1_parse": datasets.Value("string"),
-                        "sentence1": datasets.Value("string"),
-                        "sentence2_parse": datasets.Value("string"),
-                        "sentence2": datasets.Value("string"),
-                        "annotator_labels": datasets.features.Sequence(datasets.Value("string")),
-                        "gold_label": datasets.Value("string")
-                        # These are the features of your dataset like images, labels ...
-                    }
-                ),
-                # If there's a common (input, target) tuple from the features,
-                # specify them here. They'll be used if as_supervised=True in
-                # builder.as_dataset.
-                supervised_keys=None,
-                # Homepage of the dataset for documentation
-                homepage="https://allenai.org/data/scitail",
-                citation=_CITATION,
+
+        if self.config.schema == "source":
+            features = datasets.Features(
+                {
+                    "id": datasets.Value("string"),
+                    "premise": datasets.Value("string"),
+                    "hypothesis": datasets.Value("string"),
+                    "label": datasets.Value("string"),
+                }
             )
-        elif self.config.name == "tsv_format":
-            return datasets.DatasetInfo(
-                # This is the description that will appear on the datasets page.
-                description=_DESCRIPTION,
-                # datasets.features.FeatureConnectors
-                features=datasets.Features(
-                    {
-                        "premise": datasets.Value("string"),
-                        "hypothesis": datasets.Value("string"),
-                        "label": datasets.Value("string")
-                        # These are the features of your dataset like images, labels ...
-                    }
-                ),
-                # If there's a common (input, target) tuple from the features,
-                # specify them here. They'll be used if as_supervised=True in
-                # builder.as_dataset.
-                supervised_keys=None,
-                # Homepage of the dataset for documentation
-                homepage="https://allenai.org/data/scitail",
-                citation=_CITATION,
-            )
-        elif self.config.name == "predictor_format":
-            return datasets.DatasetInfo(
-                # This is the description that will appear on the datasets page.
-                description=_DESCRIPTION,
-                # datasets.features.FeatureConnectors
-                features=datasets.Features(
-                    {
-                        "answer": datasets.Value("string"),
-                        "sentence2_structure": datasets.Value("string"),
-                        "sentence1": datasets.Value("string"),
-                        "sentence2": datasets.Value("string"),
-                        "gold_label": datasets.Value("string"),
-                        "question": datasets.Value("string")
-                        # These are the features of your dataset like images, labels ...
-                    }
-                ),
-                # If there's a common (input, target) tuple from the features,
-                # specify them here. They'll be used if as_supervised=True in
-                # builder.as_dataset.
-                supervised_keys=None,
-                # Homepage of the dataset for documentation
-                homepage="https://allenai.org/data/scitail",
-                citation=_CITATION,
-            )
-        elif self.config.name == "dgem_format":
-            return datasets.DatasetInfo(
-                # This is the description that will appear on the datasets page.
-                description=_DESCRIPTION,
-                # datasets.features.FeatureConnectors
-                features=datasets.Features(
-                    {
-                        "premise": datasets.Value("string"),
-                        "hypothesis": datasets.Value("string"),
-                        "label": datasets.Value("string"),
-                        "hypothesis_graph_structure": datasets.Value("string")
-                        # These are the features of your dataset like images, labels ...
-                    }
-                ),
-                # If there's a common (input, target) tuple from the features,
-                # specify them here. They'll be used if as_supervised=True in
-                # builder.as_dataset.
-                supervised_keys=None,
-                # Homepage of the dataset for documentation
-                homepage="https://allenai.org/data/scitail",
-                citation=_CITATION,
-            )
+
+        elif self.config.schema == "bigbio_te":
+            features = schemas.entailment_features
+
+        return datasets.DatasetInfo(
+            description=_DESCRIPTION,
+            features=features,
+            homepage=_HOMEPAGE,
+            license=_LICENSE,
+            citation=_CITATION,
+        )
 
     def _split_generators(self, dl_manager):
-        """Returns SplitGenerators."""
-        # TODO(sciTail): Downloads the data and defines the splits
-        # dl_manager is a datasets.download.DownloadManager that can be used to
-        # download and extract URLs
-        dl_dir = dl_manager.download_and_extract(_URL)
-        data_dir = os.path.join(dl_dir, "SciTailV1.1")
-        snli = os.path.join(data_dir, "snli_format")
-        dgem = os.path.join(data_dir, "dgem_format")
-        tsv = os.path.join(data_dir, "tsv_format")
-        predictor = os.path.join(data_dir, "predictor_format")
-        if self.config.name == "snli_format":
-            return [
-                datasets.SplitGenerator(
-                    name=datasets.Split.TRAIN,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(snli, "scitail_1.0_train.txt")},
-                ),
-                datasets.SplitGenerator(
-                    name=datasets.Split.TEST,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(snli, "scitail_1.0_test.txt")},
-                ),
-                datasets.SplitGenerator(
-                    name=datasets.Split.VALIDATION,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(snli, "scitail_1.0_dev.txt")},
-                ),
-            ]
-        elif self.config.name == "tsv_format":
-            return [
-                datasets.SplitGenerator(
-                    name=datasets.Split.TRAIN,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(tsv, "scitail_1.0_train.tsv")},
-                ),
-                datasets.SplitGenerator(
-                    name=datasets.Split.TEST,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(tsv, "scitail_1.0_test.tsv")},
-                ),
-                datasets.SplitGenerator(
-                    name=datasets.Split.VALIDATION,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(tsv, "scitail_1.0_dev.tsv")},
-                ),
-            ]
-        elif self.config.name == "predictor_format":
-            return [
-                datasets.SplitGenerator(
-                    name=datasets.Split.TRAIN,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(predictor, "scitail_1.0_structure_train.jsonl")},
-                ),
-                datasets.SplitGenerator(
-                    name=datasets.Split.TEST,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(predictor, "scitail_1.0_structure_test.jsonl")},
-                ),
-                datasets.SplitGenerator(
-                    name=datasets.Split.VALIDATION,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(predictor, "scitail_1.0_structure_dev.jsonl")},
-                ),
-            ]
-        elif self.config.name == "dgem_format":
-            return [
-                datasets.SplitGenerator(
-                    name=datasets.Split.TRAIN,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(dgem, "scitail_1.0_structure_train.tsv")},
-                ),
-                datasets.SplitGenerator(
-                    name=datasets.Split.TEST,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(dgem, "scitail_1.0_structure_test.tsv")},
-                ),
-                datasets.SplitGenerator(
-                    name=datasets.Split.VALIDATION,
-                    # These kwargs will be passed to _generate_examples
-                    gen_kwargs={"filepath": os.path.join(dgem, "scitail_1.0_structure_dev.tsv")},
-                ),
-            ]
+
+        urls = _URLS[_DATASETNAME]
+        data_dir = dl_manager.download_and_extract(urls)
+
+        return [
+            datasets.SplitGenerator(
+                name=datasets.Split.TRAIN,
+                gen_kwargs={
+                    "filepath": os.path.join(data_dir, "SciTailV1.1", "tsv_format", "scitail_1.0_train.tsv"),
+                },
+            ),
+            datasets.SplitGenerator(
+                name=datasets.Split.TEST,
+                gen_kwargs={
+                    "filepath": os.path.join(data_dir, "SciTailV1.1", "tsv_format", "scitail_1.0_test.tsv"),
+                },
+            ),
+            datasets.SplitGenerator(
+                name=datasets.Split.VALIDATION,
+                gen_kwargs={
+                    "filepath": os.path.join(data_dir, "SciTailV1.1", "tsv_format", "scitail_1.0_dev.tsv"),
+                },
+            ),
+        ]
 
     def _generate_examples(self, filepath):
-        """Yields examples."""
-        # TODO(sciTail): Yields (key, example) tuples from the dataset
-        with open(filepath, encoding="utf-8") as f:
-            if self.config.name == "snli_format":
-                for id_, row in enumerate(f):
-                    data = json.loads(row)
+        # since examples can contain quotes mid text set quoting to QUOTE_NONE (3) when reading tsv
+        # e.g.: ... and apply specific "tools" to examples and ...
+        data = pd.read_csv(filepath, sep="\t", names=["premise", "hypothesis", "label"], quoting=3)
+        data["id"] = data.index
 
-                    yield id_, {
-                        "sentence1_binary_parse": data["sentence1_binary_parse"],
-                        "sentence1_parse": data["sentence1_parse"],
-                        "sentence1": data["sentence1"],
-                        "sentence2_parse": data["sentence2_parse"],
-                        "sentence2": data["sentence2"],
-                        "annotator_labels": data["annotator_labels"],
-                        "gold_label": data["gold_label"],
-                    }
-            elif self.config.name == "tsv_format":
-                data = csv.reader(f, delimiter="\t")
-                for id_, row in enumerate(data):
-                    yield id_, {"premise": row[0], "hypothesis": row[1], "label": row[2]}
-            elif self.config.name == "dgem_format":
-                data = csv.reader(f, delimiter="\t")
-                for id_, row in enumerate(data):
-                    yield id_, {
-                        "premise": row[0],
-                        "hypothesis": row[1],
-                        "label": row[2],
-                        "hypothesis_graph_structure": row[3],
-                    }
-            elif self.config.name == "predictor_format":
-                for id_, row in enumerate(f):
-                    data = json.loads(row)
-                    yield id_, {
-                        "answer": data["answer"],
-                        "sentence2_structure": data["sentence2_structure"],
-                        "sentence1": data["sentence1"],
-                        "sentence2": data["sentence2"],
-                        "gold_label": data["gold_label"],
-                        "question": data["question"],
-                    }
+        if self.config.schema == "source":
+            for _, row in data.iterrows():
+                yield row["id"], row.to_dict()
+
+        elif self.config.schema == "bigbio_te":
+            for _, row in data.iterrows():
+                yield row["id"], row.to_dict()
